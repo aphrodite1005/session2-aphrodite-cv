@@ -1,0 +1,56 @@
+name: Build LaTeX CV
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build LaTeX PDF
+        uses: xu-cheng/latex-action@v2
+        with:
+          root_file: main.tex
+
+      - name: Prepare PDF for release branch
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p /tmp/cv_release
+          cp main.pdf /tmp/cv_release/main.pdf
+
+      - name: Push PDF to release branch
+        if: github.event_name == 'push'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git checkout --orphan release
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp /tmp/cv_release/main.pdf .
+          git add main.pdf
+          git commit -m "Update CV PDF"
+          git push -f origin release
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ github.run_number }}" main.pdf \
+            --target release \
+            --title "Release v${{ github.run_number }}" \
+            --notes "Automated CV PDF build." || echo "Release already exists"
